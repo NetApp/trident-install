@@ -1,0 +1,45 @@
+---
+- name: Install Astra Trident, StorageClasses, and Backend
+  hosts: localhost
+  become: true
+  become_method: sudo
+  gather_facts: false
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  vars_files:
+    - defaults/main.yml
+  tasks:
+    - name: Create Namespace
+      command: 'kubectl create namespace trident'
+      run_once: true
+      register: create_namespace
+
+    - name: Add Astra Trident Helm Repo
+      command: 'helm repo add netapp-trident https://netapp.github.io/trident-helm-chart'
+      run_once: true
+      register: add_helm_repo
+      when: create_namespace is succeeded
+      
+    - name: Install Trident using Helm
+      command: 'helm install trident-install netapp-trident/trident-operator --version {{ trident_version }} --create-namespace --namespace trident --set "meta.helm.sh/release-namespace=trident"'
+      run_once: true
+      register: install_trident
+      when: create_namespace is succeeded and add_helm_repo is succeeded
+
+    - name: pause for 45 seconds
+      pause:
+        seconds: 30
+        
+    - name: Create Backend
+      command: 'kubectl -n trident create -f {{ backend_file }}'
+      run_once: true
+      register: create_backend
+      when: create_namespace is succeeded and add_helm_repo is succeeded and install_trident is succeeded
+
+    - name: Create StorageClass
+      command: 'kubectl create -f {{ storageclass_file }}'
+      run_once: true
+      register: create_storageclass
+      when: create_namespace is succeeded and add_helm_repo is succeeded and install_trident is succeeded and create_backend is succeeded
+
+
